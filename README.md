@@ -7,4 +7,4 @@ Licence
 =======
 Copyright(c) Rainbow Cupcake: rainbow_cupcake@hotmail.com.br
 
-Free to use and modify, absolutely no warranty or support.
+Free to use and modify, absolutely no warranty or support given.
