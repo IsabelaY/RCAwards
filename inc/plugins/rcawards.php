@@ -435,7 +435,7 @@ if (r==true)
 			$page = 1;
 		}
 		
-		$multipage = multipage($result, $perpage, $page, "misc.php?action=userawards&aid={$aid}");
+		$multipage = multipage($result, $perpage, $page, "misc.php?action=awardslist");
 		
 		$query = $db->query("
 			SELECT *
