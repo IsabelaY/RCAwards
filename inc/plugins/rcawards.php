@@ -16,6 +16,8 @@ $plugins->add_hook('admin_config_permissions', 'rcawards_admin_config_permission
 $plugins->add_hook("postbit","rcawards_postbit");
 $plugins->add_hook("misc_start", "rcawards_misc");
 
+$plugins->add_hook('usercp_start', 'rcawards_usercp');
+
 function rcawards_info()
 {
 
@@ -25,7 +27,7 @@ return array(
 	"website"		=> "http://www.sonicrainboom.com.br",
 	"author"		=> "Rainbow Cupcake",
 	"authorsite"		=> "http://www.sonicrainboom.com.br",
-	"version"		=> "1.0",
+	"version"		=> "1.1",
 	"guid" 			=> "",
 	"compatibility"	=> "*"
 	);
@@ -59,7 +61,7 @@ function rcawards_install()
   				aid int unsigned NOT NULL default '0',
 				reason text NOT NULL DEFAULT '',
   				dateline bigint(30) NOT NULL default '0',
-				priority smallint(5) unsigned NOT NULL default '0',
+				priority int(10) NOT NULL default '0',
   				PRIMARY KEY (auid)
 				) ENGINE=MyISAM;");
 	}
@@ -138,6 +140,62 @@ function rcawards_give_award($uid, $guid, $gip, $aid, $reason)
 	return true;
 }
 
+function rcawards_give_unique_award($uid, $guid, $gip, $aid, $reason)
+{
+	global $db, $lang;
+	
+	$lang->load("rcawards");
+	
+	$query = $db->query("
+					SELECT auid
+					FROM ".TABLE_PREFIX."rc_awards
+					WHERE aid='{$insert['aid']}' AND uid='{$db->escape_string($uid)}'
+					LIMIT 1
+					");
+	
+	if (!$db->fetch_array($query))
+	{
+		$insert = array(
+			'aid' => $db->escape_string($aid),
+			'reason'   => $db->escape_string($reason),
+			'gip'  => $db->escape_string($gip),
+			'guid' => $db->escape_string($guid),
+			'dateline' => TIME_NOW,
+			'uid' => $db->escape_string($uid)
+		);
+		
+		$query = $db->query("
+						SELECT aid
+						FROM ".TABLE_PREFIX."rc_awards_list
+						WHERE aid='{$insert['aid']}'
+						LIMIT 1
+						");
+		
+		if (!$db->fetch_array($query))
+		{
+			return false;
+		}
+		
+		$query = $db->query("
+						SELECT uid
+						FROM ".TABLE_PREFIX."users
+						WHERE uid='{$insert['uid']}'
+						LIMIT 1
+						");
+		
+		if (!$db->fetch_array($query))
+		{
+			return false;
+		}
+		
+		$db->insert_query("rc_awards", $insert);
+		
+		return true;
+	}
+	
+	return false;
+}
+
 function rcawards_postbit($post)
 {
 	global $db, $pids, $awards_cache;
@@ -162,8 +220,8 @@ function rcawards_postbit($post)
 			SELECT awards.auid, awards.uid, awards.aid, awards.reason, awards.dateline, awards.priority, alist.url, alist.title, alist.enabled, alist.desc
 			FROM (SELECT aw.auid, aw.uid, aw.aid, aw.reason, aw.dateline, aw.priority FROM ".TABLE_PREFIX."rc_awards AS aw INNER JOIN (SELECT DISTINCT p.uid
 			FROM ".TABLE_PREFIX."posts AS p
-			WHERE ".$rc_pids.") AS uids ON aw.uid=uids.uid) AS awards
-			INNER JOIN ".TABLE_PREFIX."rc_awards_list AS alist ON awards.aid=alist.aid ORDER BY awards.priority DESC, awards.dateline DESC");
+			WHERE ".$rc_pids.") AS uids ON aw.uid=uids.uid AND aw.priority<>'-1') AS awards
+			INNER JOIN ".TABLE_PREFIX."rc_awards_list AS alist ON awards.aid=alist.aid ORDER BY awards.priority ASC, awards.dateline DESC");
 			
 		$post['rcawards'] .= "<script>var awards = new Array();\n";
 		
@@ -199,11 +257,11 @@ function rcawards_memprofile()
 {
 	global $db, $mybb, $lang, $memprofile, $uid;
 	
-	$query = $db->query("SELECT COUNT(auid) AS count 
+	$query = $db->query("SELECT COUNT(*) AS count 
 					FROM ".TABLE_PREFIX."rc_awards AS awards 
 					INNER JOIN ".TABLE_PREFIX."rc_awards_list AS aw
 						ON aw.aid=awards.aid
-					WHERE uid='{$uid}' AND aw.enabled='1'");
+					WHERE uid='{$uid}' AND aw.enabled='1' AND awards.priority<>'-1'");
 	$count = $db->fetch_field($query, "count");
 	
 	$memprofile['awardslink'] = "{$count} [<a href='misc.php?action=userawards&uid={$uid}'>{$lang->rc_details}</a>]";
@@ -232,6 +290,13 @@ function rcawards_misc()
 			error($lang->invalid_user);
 		}
 		
+		if($mybb->usergroup['canmodcp'] == 1)
+		{
+			$ismod = true;
+		} else {
+			$ismod = false;
+		}
+		
 		$lang->nav_profile = $lang->sprintf($lang->nav_profile, $user['username']);
 		$lang->rc_awards_for = $lang->sprintf($lang->rc_awards_for, $user['username']);
 
@@ -249,11 +314,11 @@ function rcawards_misc()
 			$perpage = intval($mybb->settings['membersperpage']);
 		}
 
-		$query = $db->query("SELECT COUNT(auid) AS count 
+		$query = $db->query("SELECT COUNT(*) AS count 
 						FROM ".TABLE_PREFIX."rc_awards AS awards 
 						INNER JOIN ".TABLE_PREFIX."rc_awards_list AS aw
 							ON aw.aid=awards.aid
-						WHERE uid='{$user['uid']}' AND aw.enabled='1'");
+						WHERE uid='{$user['uid']}' AND aw.enabled='1' AND (awards.priority<>'-1' OR {$ismod})");
 		$result = $db->fetch_field($query, "count");
 		
 		if($mybb->input['page'] != "last")
@@ -290,7 +355,7 @@ function rcawards_misc()
 			FROM ".TABLE_PREFIX."rc_awards AS aw
 			INNER JOIN ".TABLE_PREFIX."rc_awards_list AS awl
 			ON awl.aid=aw.aid
-			WHERE uid='{$user['uid']}' AND awl.enabled='1'
+			WHERE uid='{$user['uid']}' AND awl.enabled='1' AND (aw.priority<>'-1' OR {$ismod})
 			ORDER BY dateline desc
 			LIMIT {$start}, {$perpage}
 		");
@@ -302,7 +367,12 @@ function rcawards_misc()
 			$alt_bg = alt_trow();
 			$dateline = my_date($mybb->settings['dateformat'], $row['dateline'])."<br />".my_date($mybb->settings['timeformat'], $row['dateline']);
 			
-			
+			if ($row['priority'] == '-1')
+			{
+				$style = "style=\"background-color: #FFB9B9;\"";
+			} else {
+				$style = "";
+			}
 			
 			// Display IP address and admin notation of username changes if user is a mod/admin
 			if($mybb->usergroup['canmodcp'] == 1)
@@ -314,16 +384,16 @@ function rcawards_misc()
 					$users[$row['guid']]['profilelink'] = build_profile_link($users[$row['guid']]['formatedname'], $row['guid']);
 				}
 				
-				$ipaddressbit = "<td class='{$alt_bg}' width=\"5%\" align='center'>{$users[$row['guid']]['profilelink']}</td>
-<td class=\"{$alt_bg}\" align=\"center\">{$row['gip']}</td>
-<td class=\"{$alt_bg}\" align=\"center\"><a href=\"javascript:void(0)\" onclick=\"deleteAward({$row['auid']})\" href=\"misc.php?action=removeaward&auid={$row['auid']}\"><img src=\"images/icons/delete.png\" alt=\"R\"></img></a></td>";
+				$ipaddressbit = "<td class='{$alt_bg}' {$style} width=\"5%\" align='center'>{$users[$row['guid']]['profilelink']}</td>
+<td class=\"{$alt_bg}\" {$style} align=\"center\">{$row['gip']}</td>
+<td class=\"{$alt_bg}\" {$style} align=\"center\"><a href=\"javascript:void(0)\" onclick=\"deleteAward({$row['auid']})\" href=\"misc.php?action=removeaward&auid={$row['auid']}\"><img src=\"images/icons/delete.png\" alt=\"R\"></img></a></td>";
 			}
 
 			eval("\$usernamehistory_bit .= \"".'<tr>
-<td class=\'{$alt_bg}\' align=\'center\'><b><a href=\'misc.php?action=awardsgiven&aid={$row[\'aid\']}\'>{$row[\'title\']}</a></b></td>
-<td class=\'{$alt_bg}\' align=\'center\'>{$row[\'reason\']}</td>
-<td class=\'{$alt_bg}\' align=\'center\'><img src=\'{$row[\'url\']}\' title=\'{$row[\'title\']}\'></img></td>
-<td class=\'{$alt_bg}\' align=\'center\'>{$dateline}</td>
+<td class=\'{$alt_bg}\' {$style} align=\'center\'><b><a href=\'misc.php?action=awardsgiven&aid={$row[\'aid\']}\'>{$row[\'title\']}</a></b></td>
+<td class=\'{$alt_bg}\' {$style} align=\'center\'>{$row[\'reason\']}</td>
+<td class=\'{$alt_bg}\' {$style} align=\'center\'><img src=\'{$row[\'url\']}\' title=\'{$row[\'title\']}\'></img></td>
+<td class=\'{$alt_bg}\' {$style} align=\'center\'>{$dateline}</td>
 {$ipaddressbit}
 </tr>'."\";");
 		}
@@ -403,7 +473,7 @@ if (r==true)
 			$perpage = intval($mybb->settings['membersperpage']);
 		}
 
-		$query = $db->query("SELECT COUNT(aid) AS count 
+		$query = $db->query("SELECT COUNT(*) AS count 
 						FROM ".TABLE_PREFIX."rc_awards_list
 						WHERE enabled='1'");
 		$result = $db->fetch_field($query, "count");
@@ -515,11 +585,11 @@ if (r==true)
 			$perpage = intval($mybb->settings['membersperpage']);
 		}
 
-		$query = $db->query("SELECT COUNT(auid) AS count 
+		$query = $db->query("SELECT COUNT(*) AS count 
 						FROM ".TABLE_PREFIX."rc_awards AS awards 
 						INNER JOIN ".TABLE_PREFIX."rc_awards_list AS aw
 							ON aw.aid=awards.aid
-						WHERE awards.aid='{$aid}' AND aw.enabled='1'");
+						WHERE awards.aid='{$aid}' AND aw.enabled='1' AND awards.priority<>'-1'");
 		$result = $db->fetch_field($query, "count");
 		
 		if($mybb->input['page'] != "last")
@@ -556,7 +626,7 @@ if (r==true)
 			FROM ".TABLE_PREFIX."rc_awards AS aw
 			INNER JOIN ".TABLE_PREFIX."rc_awards_list AS awl
 			ON awl.aid=aw.aid
-			WHERE aw.aid='{$aid}' AND awl.enabled='1'
+			WHERE aw.aid='{$aid}' AND awl.enabled='1' AND aw.priority<>'-1'
 			ORDER BY dateline desc
 			LIMIT {$start}, {$perpage}
 		");
@@ -1106,6 +1176,216 @@ function rcawards_admin()
 		}
 
 		exit;
+	}
+}
+
+function rcawards_usercp()
+{
+	global $mybb;
+	
+	if($mybb->input['action'] == "sortawards")
+	{
+		global $db, $lang, $theme, $templates, $headerinclude, $header, $footer, $plugins, $errors, $usercpnav;
+
+		if (!$lang->rcawards)
+		{
+			$lang->load('rcawards');
+		}
+
+		add_breadcrumb($lang->nav_usercp, 'usercp.php');
+		add_breadcrumb($lang->rc_sort_title, 'usercp.php?action=alerts');
+		
+		$query = $db->query("
+			SELECT aw.auid, aw.aid, awl.url, awl.desc, awl.title, aw.reason, aw.dateline, aw.guid, aw.priority, aw.gip
+			FROM ".TABLE_PREFIX."rc_awards AS aw
+			INNER JOIN ".TABLE_PREFIX."rc_awards_list AS awl
+			ON awl.aid=aw.aid
+			WHERE uid='{$mybb->user['uid']}' AND awl.enabled='1'
+			ORDER BY priority asc, dateline desc
+		");
+		
+		$i_inv = 0;
+		$i_ord = 0;
+		
+		while($row = $db->fetch_array($query))
+		{
+			if($row['priority'] == '-1')
+			{
+				$inv[$i_inv++] = $row;
+			} else {
+				$ord[$i_ord++] = $row;
+			}
+		}
+		
+		if ($i_inv == 0 && $i_ord == 0)
+		{
+			$body = "<td class=\"trow1\" colspan=\"2\" align=\"center\">{$lang->rc_sort_noaward}</td>";
+		} else {
+			$body = "<td width=\"50%\" class=\"trow1\" valign=\"top\">
+<fieldset class=\"trow2\">
+<legend><strong>{$lang->rc_sort_order}</strong></legend>
+<table cellspacing=\"0\" cellpadding=\"2\" style=\"width: 100%\">
+<tr>
+<td valign=\"top\" width=\"1\"><ul id=\"sortable1\" class=\"droptrue\">\n";
+			
+			for ($i = 0; $i < $i_ord; $i++)
+			{
+				$body .= "<li class=\"ui-draggable\"><input type=\"hidden\" name=\"awards[]\" value=\"{$ord[$i]['auid']}\" /><img src=\"{$ord[$i]['url']}\"/> - {$ord[$i]['reason']}</li>";
+			}
+			
+			$body .= "</ul>
+</td>
+</tr>
+</table>
+</fieldset>
+<td width=\"50%\" class=\"trow1\" valign=\"top\">
+<input type=\"hidden\" name=\"awards[]\" value=\"-\" />
+<fieldset class=\"trow2\">
+<legend><strong>{$lang->rc_sort_invisible}</strong></legend>
+<table cellspacing=\"0\" cellpadding=\"2\" style=\"width: 100%\">
+<tr>
+<td valign=\"top\" width=\"1\"><ul id=\"sortable2\" class=\"droptrue\">\n";
+			
+			for ($i = 0; $i < $i_inv; $i++)
+			{
+				$body .= "<li class=\"ui-draggable2\"><input type=\"hidden\" name=\"awards[]\" value=\"{$inv[$i]['auid']}\" /><img src=\"{$inv[$i]['url']}\"/> - {$inv[$i]['reason']}</li>";
+			}
+			
+			$body .= "</ul>
+</td>
+</tr>
+</table>
+</fieldset>";
+		}
+		
+		$content = "<html>
+<head>
+<title>{$mybb->settings['bbname']} - {$lang->rc_sort_title}</title>
+{$headerinclude}
+<script src=\"http://code.jquery.com/ui/1.9.2/jquery-ui.js\"></script>
+<style>
+#sortable1, #sortable2 { list-style-type: none; margin: 0; padding: 0; float: left; margin-right: 10px; background: #eee; padding: 5px; width: 100%; min-height: 25px;}
+#sortable1 li, #sortable2 li { margin: 5px; padding: 5px; width: 90%; margin-left:auto; margin-right:auto; }
+.ui-draggable { border: 1px solid #d3d3d3; background: #e6e6e6; }
+.ui-draggable2 { border: 1px solid #d3d3d3; background: #ffb9b9; }
+</style>
+<script>
+jQuery(function() {
+jQuery( \"ul.droptrue\" ).sortable({
+connectWith: \"ul\"
+});
+jQuery( \"#sortable1, #sortable2\" ).disableSelection();
+});
+</script>
+</head>
+<body>
+{$header}
+<form action=\"usercp.php\" method=\"post\">
+<input type=\"hidden\" name=\"my_post_key\" value=\"{$mybb->post_code}\" />
+<table width=\"100%\" border=\"0\" align=\"center\">
+<tr>
+{$usercpnav}
+<td valign=\"top\">
+{$errors}
+<table border=\"0\" cellspacing=\"{$theme['borderwidth']}\" cellpadding=\"{$theme['tablespace']}\" class=\"tborder\">
+<tr>
+<td class=\"thead\" colspan=\"2\"><strong>{$lang->rc_sort_title}</strong></td>
+</tr>
+<tr>
+<td class=\"tcat\" colspan=\"2\"><strong>{$lang->rc_sort_desc}</strong></td>
+</tr>
+<tr>
+{$body}
+</tr>
+</table>
+<br />
+<div align=\"center\">
+<input type=\"hidden\" name=\"action\" value=\"awards_sort_save\" />
+<input type=\"submit\" class=\"button\" name=\"submit\" value=\"{$lang->rc_sort_save}\" />
+</form>
+<form action=\"usercp.php\" method=\"post\" style=\"display:inline;\">
+<input type=\"hidden\" name=\"my_post_key\" value=\"{$mybb->post_code}\" />
+<input type=\"hidden\" name=\"action\" value=\"awards_sort_reset\" />
+<input type=\"submit\" class=\"button\" name=\"submit\" value=\"{$lang->rc_sort_reset}\" />
+</form>
+</div>
+</td>
+</tr>
+</table>
+{$footer}
+</body>
+</html>";
+		output_page($content);
+	}
+	
+	if($mybb->input['action'] == "awards_sort_save")
+	{
+		global $session, $lang, $db;
+		
+		if (!$lang->rcawards)
+		{
+			$lang->load('rcawards');
+		}
+		
+		if(!isset($mybb->input['my_post_key']) || $mybb->post_code != $mybb->input['my_post_key'])
+		{
+			error($lang->rc_post_key_invalid);
+		}
+		
+		$inv = false;
+		$i = 0;
+		
+		if ($mybb->input['awards'])
+		{
+			foreach ($mybb->input['awards'] as $award)
+			{
+				if (!is_numeric($award))
+				{
+					$inv = true;
+				} else {
+					if ($inv)
+					{
+						$query = $db->query("
+										UPDATE ".TABLE_PREFIX."rc_awards
+										SET priority='-1'
+										WHERE uid='{$mybb->user['uid']}' AND auid='{$db->escape_string($award)}'
+										");
+					} else {
+						$query = $db->query("
+										UPDATE ".TABLE_PREFIX."rc_awards
+										SET priority='{$i}'
+										WHERE uid='{$mybb->user['uid']}' AND auid='{$db->escape_string($award)}'
+										");
+						$i++;
+					}
+				}
+			}
+		}
+		
+		redirect("usercp.php?action=sortawards");
+	}
+	
+	if($mybb->input['action'] == "awards_sort_reset")
+	{
+		global $session, $lang, $db;
+		
+		if (!$lang->rcawards)
+		{
+			$lang->load('rcawards');
+		}
+		
+		if(!isset($mybb->input['my_post_key']) || $mybb->post_code != $mybb->input['my_post_key'])
+		{
+			error($lang->rc_post_key_invalid);
+		}
+		
+		$query = $db->query("
+						UPDATE ".TABLE_PREFIX."rc_awards
+						SET priority='0'
+						WHERE uid='{$mybb->user['uid']}'
+						");
+		
+		redirect("usercp.php?action=sortawards");
 	}
 }
 ?>

@@ -29,6 +29,14 @@ $l['ip_address'] = "Endereço IP";
 $l['rc_awards'] = "Prêmios ganhos: ";
 $l['rc_details'] = "Detalhes";
 
+$l['rc_sort_title'] = "Ordenar Prêmios";
+$l['rc_sort_desc'] = "Ordene ou coloque os seus awards como invisível aqui, arraste os prêmios entre as listas para ordenar";
+$l['rc_sort_noaward'] = "Você não possui nenhum prêmio";
+$l['rc_sort_invisible'] = "Prêmios Invisíveis";
+$l['rc_sort_order'] = "Ordem de Prêmios Visíveis";
+$l['rc_sort_reset'] = "Retornar à configuração padrão";
+$l['rc_sort_save'] = "Salvar";
+
 $l['rcawards'] = "RC Awards";
 $l['rc_post_key_invalid'] = "Post Key inválido.";
 $l['can_manage_rcawards'] = "Can manage RC Awards";

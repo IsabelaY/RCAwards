@@ -29,6 +29,14 @@ $l['ip_address'] = "IP Address";
 $l['rc_awards'] = "Awards won: ";
 $l['rc_details'] = "Details";
 
+$l['rc_sort_title'] = "Sort Awards";
+$l['rc_sort_desc'] = "Sort your awards or make them invisible, drag and drop them between the two lists to sort.";
+$l['rc_sort_noaward'] = "You don't have any award";
+$l['rc_sort_invisible'] = "Invisible Awards";
+$l['rc_sort_order'] = "Visible Awards Order";
+$l['rc_sort_reset'] = "Reset to default";
+$l['rc_sort_save'] = "Save";
+
 $l['rcawards'] = "RC Awards";
 $l['rc_post_key_invalid'] = "Post Key inválido.";
 $l['can_manage_rcawards'] = "Can manage RC Awards";
