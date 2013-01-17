@@ -18,6 +18,8 @@ $plugins->add_hook("misc_start", "rcawards_misc");
 
 $plugins->add_hook('usercp_start', 'rcawards_usercp');
 
+$plugins->add_hook('build_friendly_wol_location_end', 'rcawards_online_location');
+
 function rcawards_info()
 {
 
@@ -292,9 +294,9 @@ function rcawards_misc()
 		
 		if($mybb->usergroup['canmodcp'] == 1)
 		{
-			$ismod = true;
+			$ismod = 1;
 		} else {
-			$ismod = false;
+			$ismod = 0;
 		}
 		
 		$lang->nav_profile = $lang->sprintf($lang->nav_profile, $user['username']);
@@ -1386,6 +1388,21 @@ jQuery( \"#sortable1, #sortable2\" ).disableSelection();
 						");
 		
 		redirect("usercp.php?action=sortawards");
+	}
+}
+
+function rcawards_online_location(&$plugin_array)
+{
+	global $mybb, $lang;
+
+	if (!$lang->rcawards)
+	{
+		$lang->load('rcawards');
+	}
+	
+	if ($plugin_array['user_activity']['activity'] == 'usercp' AND my_strpos($plugin_array['user_activity']['location'], 'sortawards'))
+	{
+		$plugin_array['location_name'] = $lang->rc_location_sort;
 	}
 }
 ?>
