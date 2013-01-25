@@ -3,7 +3,7 @@ function awards_table(uid, pid, page)
 	var awards_rows = 3;
 	var awards_columns = 5;
 	var n = awards_rows * awards_columns;
-	var table;
+	var table = "";
 	if (typeof awards[uid] !== "undefined")
 	{
 		var last_page = Math.floor(awards[uid].length / n);
@@ -19,9 +19,6 @@ function awards_table(uid, pid, page)
 			{
 				table = "<a href='javascript:void()' onclick='awards_table("+uid+","+pid+","+(page-1)+");'><img src='images/dev/icons/previous.png'></img></a>&nbsp;&nbsp;&nbsp;<img src='images/dev/icons/next_gray.png'></img><br>";
 			}
-		} else
-		{
-			table = "";
 		}
 		
 		if (awards[uid].length > 0)
@@ -65,16 +62,16 @@ function awards_table(uid, pid, page)
 				}
 			}
 			
-			if (awards[uid].length > 1)
-			{
-				table += "</table><a href=\"./misc.php?action=userawards&uid="+uid+"\">"+awards[uid].length+" Prêmios</a>";
-			}
-			else
-			{
-				table += "</table><a href=\"./misc.php?action=userawards&uid="+uid+"\">"+awards[uid].length+" Prêmio</a>";
-			}
+			table += "</table>";
 		}
-	
-		jQuery("#awards_"+pid).html(table);
 	}
+	if (awards_num[uid] > 1)
+	{
+		table += "<a href=\"./misc.php?action=userawards&uid="+uid+"\">"+awards_num[uid]+" Prêmios</a>";
+	}
+	else if (awards_num[uid] == 1)
+	{
+		table += "<a href=\"./misc.php?action=userawards&uid="+uid+"\">"+awards_num[uid]+" Prêmio</a>";
+	}
+	jQuery("#awards_"+pid).html(table);
 }

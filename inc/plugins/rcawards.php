@@ -222,7 +222,7 @@ function rcawards_postbit($post)
 			SELECT awards.auid, awards.uid, awards.aid, awards.reason, awards.dateline, awards.priority, alist.url, alist.title, alist.enabled, alist.desc
 			FROM (SELECT aw.auid, aw.uid, aw.aid, aw.reason, aw.dateline, aw.priority FROM ".TABLE_PREFIX."rc_awards AS aw INNER JOIN (SELECT DISTINCT p.uid
 			FROM ".TABLE_PREFIX."posts AS p
-			WHERE ".$rc_pids.") AS uids ON aw.uid=uids.uid AND aw.priority<>'-1') AS awards
+			WHERE ".$rc_pids.") AS uids ON aw.uid=uids.uid) AS awards
 			INNER JOIN ".TABLE_PREFIX."rc_awards_list AS alist ON awards.aid=alist.aid ORDER BY awards.priority ASC, awards.dateline DESC");
 			
 		$post['rcawards'] .= "<script>var awards = new Array();\n";
@@ -231,12 +231,30 @@ function rcawards_postbit($post)
 		{
 			if ($t['enabled'] == '1')
 			{
-				if (!isset($awards_cache[$t['uid']]))
+				if ($t['priority'] != '-1')
 				{
-					$post['rcawards'] .= "awards[{$t['uid']}] = new Array();\n";
+					if (!isset($awards_cache[$t['uid']]))
+					{
+						$post['rcawards'] .= "awards[{$t['uid']}] = new Array();\n";
+					}
+					$awards_cache[$t['uid']][] = $t;
+					$post['rcawards'] .= "awards[{$t['uid']}].push([\"{$t['url']}\", \"{$t['title']}\", \"{$t['reason']}\", \"{$t['aid']}\", \"{$t['auid']}\"]);\n";
 				}
-				$awards_cache[$t['uid']][] = $t;
-				$post['rcawards'] .= "awards[{$t['uid']}].push([\"{$t['url']}\", \"{$t['title']}\", \"{$t['reason']}\", \"{$t['aid']}\", \"{$t['auid']}\"]);\n";
+				if (!$awards_num[$t['uid']])
+				{
+					$awards_num[$t['uid']] = 1;
+				} else {
+					$awards_num[$t['uid']]++;
+				}
+			}
+		}
+		
+		if (!is_null($awards_num))
+		{
+			$post['rcawards'] .= "var awards_num = new Array();\n";
+			foreach ($awards_num as $uid => $n)
+			{
+				$post['rcawards'] .= "awards_num[{$uid}] = {$n};\n";
 			}
 		}
 		
@@ -263,7 +281,7 @@ function rcawards_memprofile()
 					FROM ".TABLE_PREFIX."rc_awards AS awards 
 					INNER JOIN ".TABLE_PREFIX."rc_awards_list AS aw
 						ON aw.aid=awards.aid
-					WHERE uid='{$uid}' AND aw.enabled='1' AND awards.priority<>'-1'");
+					WHERE uid='{$uid}' AND aw.enabled='1'");
 	$count = $db->fetch_field($query, "count");
 	
 	$memprofile['awardslink'] = "{$count} [<a href='misc.php?action=userawards&uid={$uid}'>{$lang->rc_details}</a>]";
@@ -320,7 +338,7 @@ function rcawards_misc()
 						FROM ".TABLE_PREFIX."rc_awards AS awards 
 						INNER JOIN ".TABLE_PREFIX."rc_awards_list AS aw
 							ON aw.aid=awards.aid
-						WHERE uid='{$user['uid']}' AND aw.enabled='1' AND (awards.priority<>'-1' OR {$ismod})");
+						WHERE uid='{$user['uid']}' AND aw.enabled='1'");
 		$result = $db->fetch_field($query, "count");
 		
 		if($mybb->input['page'] != "last")
@@ -357,7 +375,7 @@ function rcawards_misc()
 			FROM ".TABLE_PREFIX."rc_awards AS aw
 			INNER JOIN ".TABLE_PREFIX."rc_awards_list AS awl
 			ON awl.aid=aw.aid
-			WHERE uid='{$user['uid']}' AND awl.enabled='1' AND (aw.priority<>'-1' OR {$ismod})
+			WHERE uid='{$user['uid']}' AND awl.enabled='1'
 			ORDER BY dateline desc
 			LIMIT {$start}, {$perpage}
 		");
