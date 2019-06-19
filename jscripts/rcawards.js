@@ -7,6 +7,10 @@ function awards_table(uid, pid, page)
 	if (typeof awards[uid] !== "undefined")
 	{
 		var last_page = Math.floor(awards[uid].length / n);
+		if ((awards[uid].length % n) == 0 && last_page > 0)
+		{
+			last_page -= 1;
+		}
 		if (last_page > 0)
 		{
 			if (page == 0)
@@ -27,7 +31,7 @@ function awards_table(uid, pid, page)
 			
 			if (page == last_page)
 			{
-				var dn = awards[uid].length % n;
+				var dn = (awards[uid].length - 1) % n;
 				var drows = Math.floor(dn / awards_columns);
 				var dcolumns = dn % awards_rows;
 				var width = (100 / awards_columns) + "%";

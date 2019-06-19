@@ -37,6 +37,11 @@ $l['rc_sort_order'] = "Visible Awards Order";
 $l['rc_sort_reset'] = "Reset to default";
 $l['rc_sort_save'] = "Save";
 
+$l['rc_location_sort'] = "Sorting Awards";
+$l['rc_location_userawards'] = "Viewing <a href=\"http://sonicrainboom.com.br/misc.php?action=userawards&uid={1}\">{2}'s Awards</a>";
+$l['rc_location_awardlist'] = "Viewing <a href=\"http://sonicrainboom.com.br/misc.php?action=awardslist\">Award List</a>";
+$l['rc_location_awardgiven'] = "Viewing <a href=\"http://sonicrainboom.com.br/misc.php?action=awardsgiven&aid={1}\">List of Awards \"{2}\" Given</a>";
+
 $l['rcawards'] = "RC Awards";
 $l['rc_post_key_invalid'] = "Post Key inválido.";
 $l['can_manage_rcawards'] = "Can manage RC Awards";

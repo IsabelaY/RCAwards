@@ -64,6 +64,7 @@ function rcawards_install()
 				reason text NOT NULL DEFAULT '',
   				dateline bigint(30) NOT NULL default '0',
 				priority int(10) NOT NULL default '0',
+				customurl varchar(255),
   				PRIMARY KEY (auid)
 				) ENGINE=MyISAM;");
 	}
@@ -100,9 +101,7 @@ function rcawards_uninstall()
 
 function rcawards_give_award($uid, $guid, $gip, $aid, $reason)
 {
-	global $db, $lang;
-	
-	$lang->load("rcawards");
+	global $db, $Alerts;
 
 	$insert = array(
 		'aid' => $db->escape_string($aid),
@@ -114,16 +113,18 @@ function rcawards_give_award($uid, $guid, $gip, $aid, $reason)
 	);
 	
 	$query = $db->query("
-					SELECT aid
+					SELECT aid, title, url
 					FROM ".TABLE_PREFIX."rc_awards_list
 					WHERE aid='{$insert['aid']}'
 					LIMIT 1
 					");
 	
-	if (!$db->fetch_array($query))
+	if ($db->num_rows($query) == 0)
 	{
 		return false;
 	}
+
+	$award_info = $db->fetch_array($query);
 	
 	$query = $db->query("
 					SELECT uid
@@ -132,11 +133,21 @@ function rcawards_give_award($uid, $guid, $gip, $aid, $reason)
 					LIMIT 1
 					");
 	
-	if (!$db->fetch_array($query))
+	if ($db->num_rows($query) == 0)
 	{
 		return false;
 	}
 	
+	if ($Alerts instanceof Alerts)
+	{
+		$Alerts->addAlert((int) $insert['uid'], 'award', 0, $insert['uid'], array(
+        'award_name' => $award_info['title'],
+        'award_img' => $award_info['url'],
+        'guid' => $insert['guid'],
+        'reason' =>$insert['reason']
+        ));
+	}
+
 	$db->insert_query("rc_awards", $insert);
 	
 	return true;
@@ -144,58 +155,83 @@ function rcawards_give_award($uid, $guid, $gip, $aid, $reason)
 
 function rcawards_give_unique_award($uid, $guid, $gip, $aid, $reason)
 {
-	global $db, $lang;
-	
-	$lang->load("rcawards");
+	global $db;
 	
 	$query = $db->query("
 					SELECT auid
 					FROM ".TABLE_PREFIX."rc_awards
-					WHERE aid='{$insert['aid']}' AND uid='{$db->escape_string($uid)}'
+					WHERE aid='{$db->escape_string($aid)}' AND uid='{$db->escape_string($uid)}'
 					LIMIT 1
 					");
 	
-	if (!$db->fetch_array($query))
+	if ($db->num_rows($query) == 0)
 	{
-		$insert = array(
-			'aid' => $db->escape_string($aid),
-			'reason'   => $db->escape_string($reason),
-			'gip'  => $db->escape_string($gip),
-			'guid' => $db->escape_string($guid),
-			'dateline' => TIME_NOW,
-			'uid' => $db->escape_string($uid)
-		);
-		
-		$query = $db->query("
-						SELECT aid
-						FROM ".TABLE_PREFIX."rc_awards_list
-						WHERE aid='{$insert['aid']}'
-						LIMIT 1
-						");
-		
-		if (!$db->fetch_array($query))
-		{
-			return false;
-		}
-		
-		$query = $db->query("
-						SELECT uid
-						FROM ".TABLE_PREFIX."users
-						WHERE uid='{$insert['uid']}'
-						LIMIT 1
-						");
-		
-		if (!$db->fetch_array($query))
-		{
-			return false;
-		}
-		
-		$db->insert_query("rc_awards", $insert);
-		
-		return true;
+		return rcawards_give_award($uid, $guid, $gip, $aid, $reason);
 	}
 	
 	return false;
+}
+
+function rcawards_load_cache($uids)
+{
+	global $db, $awards_cache, $script;
+	
+	$awards_cache = array();
+	
+	if (!is_array($uids))
+	{
+		return false;
+	}
+	
+	$uid_list = "";
+	foreach ($uids as $uid)
+	{
+		if ($uid_list != "")
+			$uid_list .= ", ";
+		$uid_list .= intval($uid);
+	}
+	
+	$query = $db->query("
+		SELECT awards.auid, awards.uid, awards.aid, awards.reason, awards.dateline, awards.priority, alist.url, alist.title, alist.enabled, alist.desc
+		FROM (SELECT auid, uid, aid, reason, dateline, priority FROM ".TABLE_PREFIX."rc_awards WHERE uid IN ({$uid_list})) AS awards
+		INNER JOIN ".TABLE_PREFIX."rc_awards_list AS alist ON awards.aid=alist.aid ORDER BY awards.priority ASC, awards.dateline DESC");
+	
+	$script .= "<script>var awards = new Array();\n";
+	
+	while($t = $db->fetch_array($query))
+	{
+		if ($t['enabled'] == '1')
+		{
+			if ($t['priority'] != '-1')
+			{
+				if (!isset($awards_cache[$t['uid']]))
+				{
+					$script .= "awards[{$t['uid']}] = new Array();\n";
+				}
+				$awards_cache[$t['uid']][] = $t;
+				$script .= "awards[{$t['uid']}].push([\"".htmlspecialchars_uni($t['url'])."\", \"".htmlspecialchars_uni($t['title'])."\", \"".trim(preg_replace('/\s\s+/', ' ', htmlspecialchars_uni($t['reason'])))."\", \"{$t['aid']}\", \"{$t['auid']}\"]);\n";
+			}
+			if (!$awards_num[$t['uid']])
+			{
+				$awards_num[$t['uid']] = 1;
+			} else {
+				$awards_num[$t['uid']]++;
+			}
+		}
+	}
+	
+	if (!is_null($awards_num))
+	{
+		$script .= "var awards_num = new Array();\n";
+		foreach ($awards_num as $uid => $n)
+		{
+			$script .= "awards_num[{$uid}] = {$n};\n";
+		}
+	}
+	
+	$script .= "</script>";
+	
+	return $script;
 }
 
 function rcawards_postbit($post)
@@ -238,7 +274,7 @@ function rcawards_postbit($post)
 						$post['rcawards'] .= "awards[{$t['uid']}] = new Array();\n";
 					}
 					$awards_cache[$t['uid']][] = $t;
-					$post['rcawards'] .= "awards[{$t['uid']}].push([\"{$t['url']}\", \"{$t['title']}\", \"{$t['reason']}\", \"{$t['aid']}\", \"{$t['auid']}\"]);\n";
+					$post['rcawards'] .= "awards[{$t['uid']}].push([\"".htmlspecialchars_uni($t['url'])."\", \"".htmlspecialchars_uni($t['title'])."\", \"".trim(preg_replace('/\s\s+/', ' ', htmlspecialchars_uni($t['reason'])))."\", \"{$t['aid']}\", \"{$t['auid']}\"]);\n";
 				}
 				if (!$awards_num[$t['uid']])
 				{
@@ -291,7 +327,7 @@ function rcawards_memprofile()
 
 function rcawards_misc()
 {
-	global $mybb, $lang, $db, $theme, $headerinclude, $header, $footer, $multipage, $alt_bg;
+	global $mybb, $lang, $db, $theme, $headerinclude, $header, $footer, $multipage, $alt_bg, $Alerts;
 	
 	$lang->load("rcawards");
 	
@@ -408,7 +444,9 @@ function rcawards_misc()
 <td class=\"{$alt_bg}\" {$style} align=\"center\">{$row['gip']}</td>
 <td class=\"{$alt_bg}\" {$style} align=\"center\"><a href=\"javascript:void(0)\" onclick=\"deleteAward({$row['auid']})\" href=\"misc.php?action=removeaward&auid={$row['auid']}\"><img src=\"images/icons/delete.png\" alt=\"R\"></img></a></td>";
 			}
-
+			
+			$row['reason'] = htmlspecialchars_uni($row['reason']);
+			$row['title'] = htmlspecialchars_uni($row['title']);
 			eval("\$usernamehistory_bit .= \"".'<tr>
 <td class=\'{$alt_bg}\' {$style} align=\'center\'><b><a href=\'misc.php?action=awardsgiven&aid={$row[\'aid\']}\'>{$row[\'title\']}</a></b></td>
 <td class=\'{$alt_bg}\' {$style} align=\'center\'>{$row[\'reason\']}</td>
@@ -538,7 +576,9 @@ if (r==true)
 		while($row = $db->fetch_array($query))
 		{
 			$alt_bg = alt_trow();
-
+			
+			$row['desc'] = htmlspecialchars_uni($row['desc']);
+			$row['title'] = htmlspecialchars_uni($row['title']);
 			eval("\$usernamehistory_bit .= \"".'<tr>
 <td class=\'{$alt_bg}\' align=\'center\'><b><a href=\'misc.php?action=awardsgiven&aid={$row[\'aid\']}\'>{$row[\'title\']}</a></b></td>
 <td class=\'{$alt_bg}\' align=\'center\'>{$row[\'desc\']}</td>
@@ -609,7 +649,7 @@ if (r==true)
 						FROM ".TABLE_PREFIX."rc_awards AS awards 
 						INNER JOIN ".TABLE_PREFIX."rc_awards_list AS aw
 							ON aw.aid=awards.aid
-						WHERE awards.aid='{$aid}' AND aw.enabled='1' AND awards.priority<>'-1'");
+						WHERE awards.aid='{$aid}' AND aw.enabled='1'");
 		$result = $db->fetch_field($query, "count");
 		
 		if($mybb->input['page'] != "last")
@@ -646,7 +686,7 @@ if (r==true)
 			FROM ".TABLE_PREFIX."rc_awards AS aw
 			INNER JOIN ".TABLE_PREFIX."rc_awards_list AS awl
 			ON awl.aid=aw.aid
-			WHERE aw.aid='{$aid}' AND awl.enabled='1' AND aw.priority<>'-1'
+			WHERE aw.aid='{$aid}' AND awl.enabled='1'
 			ORDER BY dateline desc
 			LIMIT {$start}, {$perpage}
 		");
@@ -680,7 +720,9 @@ if (r==true)
 				$ipaddressbit = "<td class='{$alt_bg}' align='center'>{$users[$row['guid']]['profilelink']}</td>
 <td class=\"{$alt_bg}\" align=\"center\">{$row['gip']}</td>";
 			}
-
+			
+			$row['reason'] = htmlspecialchars_uni($row['reason']);
+			$row['title'] = htmlspecialchars_uni($row['title']);
 			eval("\$usernamehistory_bit .= \"".'<tr>
 <td class=\'{$alt_bg}\' align=\'center\'>{$users[$row[\'uid\']][\'profilelink\']}</td>
 <td class=\'{$alt_bg}\' align=\'center\'>{$row[\'reason\']}</td>
@@ -771,6 +813,8 @@ if (r==true)
 		
 		while($row = $db->fetch_array($query))
 		{
+			$row['desc'] = htmlspecialchars_uni($row['desc']);
+			$row['title'] = htmlspecialchars_uni($row['title']);
 			$jarray .= "awards_desc[{$row['aid']}] = \"{$row['desc']}\";\n";
 			$jarray .= "awards_url[{$row['aid']}] = \"{$row['url']}\";\n";
 			eval("\$availableaward_bit .= \"".'<option value=\'{$row[\'aid\']}\'>{$row[\'title\']}</option>\'>'."\";");
@@ -861,13 +905,13 @@ updateDesc()
 		);
 		
 		$query = $db->query("
-						SELECT aid
+						SELECT aid, title, url
 						FROM ".TABLE_PREFIX."rc_awards_list
 						WHERE aid='{$insert['aid']}'
 						LIMIT 1
 						");
 		
-		if (!$db->fetch_array($query))
+		if (!($award_info = $db->fetch_array($query)))
 		{
 			error($lang->rc_invalidaward);
 		}
@@ -885,6 +929,16 @@ updateDesc()
 		}
 		
 		$db->insert_query("rc_awards", $insert);
+		
+		if ($Alerts instanceof Alerts)
+		{
+			$Alerts->addAlert((int) $insert['uid'], 'award', 0, (int) $insert['uid'], array(
+	        'award_name' => $award_info['title'],
+	        'award_img' => $award_info['url'],
+	        'guid' => $insert['guid'],
+	        'reason' =>$insert['reason']
+	        ));
+		}
 		
 		redirect("member.php?action=profile&uid={$insert['uid']}");
 	}
